@@ -1,0 +1,226 @@
+---
+title: "Knightdale Public Comment 04-20-2023"
+author: "Tabitha Hagen"
+date: "4/21/2023"
+output: word_document
+---
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load the required libraries 
+
+```{r,include=FALSE, message = FALSE, warning = FALSE}
+#install.packages('tidyverse')
+#install.packages('tidytext')
+#install.packages("SnowballC")
+#install.packages('widyr')
+#install.packages('igraph')
+#install.packages("ggraph")
+library(tidyverse)
+library(tidytext)
+library(SnowballC)
+library (widyr)
+library(igraph)
+library(ggraph)
+```
+
+# Read in the data set then look at the rows/observations/individual entries and the columns/variables/observations
+
+```{r message=FALSE, error=FALSE, include=FALSE}
+comments_original <- read_csv("~/UNCW/MIS 506 Text and Unstructured Data/MIS 506 week (7)/Knightdale Public Comment Spreadsheet.csv")
+```
+
+# We can use the function select() to  choose and rename the columns we wish to keep:
+
+```{r message=FALSE, error=FALSE}
+collective_comments <-comments_original   %>% 
+  select (date = Date_Submitted, name=Name, address=Address, subject=Public_Comment_Subject,
+          position = Please_indicate_if_you_are_in_favor_in_opposition_or_do_not_have_a_stated_position_and_have_a_concern_or_neutral_statement, 
+          indiv_comment = If_commenting_on_a_Public_Hearing_item_please_list_specific_reasons_why_you_are_in_favor_or_opposed_to_the_item)
+
+collective_comments # view the data
+```
+
+# Tokenize the text and transform it to a tidy data structure.
+
+```{r message=FALSE, error=FALSE}
+# Initial count of the words as a starting point
+
+tidy_comments<- collective_comments %>%
+  unnest_tokens("word", indiv_comment)%>% #separate into 1 word per doc per row
+    count(word, sort=TRUE) %>% # Count the words
+    arrange(desc(n))  #arrange in descending order of the count
+
+dim(tidy_comments) # view the data (number of rows/variables, number of columns/observations)
+```
+
+# Preprocess the text to take out:
+#   - unnecessary words
+
+```{r message=FALSE, error=FALSE}
+# Remove common words such as “the”,“for”,“to” etc.
+
+ data("stop_words") # uses previously defined stop words
+    tidy_comments<-tidy_comments %>%
+       anti_join(stop_words) # extracts pre-defined stopping words from dataframe 
+    
+dim(tidy_comments) # view the data (number of rows/variables, number of columns/observations)
+```
+
+# Preprocess the text to take out:
+#   - custom list of unnecessary words
+
+```{r message=FALSE, error=FALSE}
+# remove custom list of undesirable words
+undesirable_words <- c("knightdale", "smithfield", "poole", "wendell","county", "add", "please", "already", "wake", "county", "would", "rd", "project", "development", "also", "need", "increase", "marks", "near", "area", "additional", "much", "high", "mark", "mark's","myra", "requirement", "voice", "current", "goal", "apartment")
+  tidy_comments<-tidy_comments %>%
+  filter (!word %in% undesirable_words)
+  
+dim(tidy_comments) # view the data (number of rows/variables, number of columns/observations)
+```
+
+# Preprocess the text to take out:
+#   - Stemming a word refers to replacing it with its most basic conjugate form.
+
+```{r message=FALSE, error=FALSE}
+# Stemming is common practice because we don’t want the words “type” and “typing” to convey different meanings to algorithms.
+
+tidy_comments<-tidy_comments %>%
+       mutate_at("word", list(~wordStem((.), language="en"))) # using SnowballC pkg
+
+dim(tidy_comments) # view the data (number of rows/variables, number of columns/observations)
+```
+
+# Preprocess the text to take out:
+#   - any punctuation
+#   - any non-alpha characters
+
+```{r message=FALSE, error=FALSE}
+# Continued pre-processing of number of characters, punctuation, and non-alpha characters
+tidy_comments<- tidy_comments %>%
+   filter(!str_detect(word, "^\\b\\d+\\b"), # keep only words
+   !str_detect(word, "\\s+"),   # take out punctuation
+   !str_detect(word, "[^a-zA-Z]"))  # keep only alpha characters
+
+tidy_comments # view the data
+```
+
+# Count the most popular words in the text.
+
+```{r message=FALSE, error=FALSE}
+
+tidy_comments %>%
+   count(word, sort=TRUE) %>% # Count the words to determine  the most commonly used words.
+   top_n(10)  %>%
+   ungroup() %>%   #Because count() performs a group_by() on the word column
+   mutate(word = reorder(word, n)) %>%
+   ggplot() +
+   geom_col(aes(word, n)) +
+   theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank()) +
+   xlab("") + 
+   ylab("Individual words") +
+   ggtitle("Most Frequently Used Words in Public Comments") +
+   coord_flip()
+
+```
+
+# Create a tidytext and tokenize by bigrams.  
+
+```{r message=FALSE, error=FALSE}
+#Create a tidytext dataframe
+
+bigrams <- collective_comments %>%
+  unnest_tokens(bigram, indiv_comment, token = "ngrams", n = 2) #create bigrams of 2 words
+
+dim(bigrams) # view the data (number of rows/variables, number of columns/observations)
+head(bigrams) #view an extract of the tidytext dataframe
+```
+
+# Separate the bigram into Columns Word 1 and Word 2
+
+```{r message=FALSE, error=FALSE}
+#Separate the bigrams
+
+bigrams_separated <- bigrams %>%
+    # separates n-gram into n columns, "word1", "word2", .., "wordn"
+    separate(bigram, c("word1", "word2"), sep = " ") 
+
+# view the data (number of rows/variables, number of columns/observations)
+dim (bigrams_separated) 
+head(bigrams_separated) #view an extract of the tidytext dataframe
+```
+
+#Pre-Process Text by Removing numbers, whitespaces, undesirable words, and stop words, words with less than 3 characters, etc.
+
+```{r message=FALSE, error=FALSE}
+# Pre-process tidytext dataframe
+
+# custom list of undesirable words
+undesirable_words <- c("knightdale", "smithfield", "poole", "wendell","county", "add", "please", "already", "wake", "county", "would", "rd", "project", "development", "also", "need", "increase", "marks", "near", "area", "additional", "much", "high", "mark", "mark's","myra", "requirement", "voice", "current", "goal", "apartment")
+
+bigrams_separated$word1 <- gsub("[^a-zA-Z]","", bigrams_separated$word1) # only use alpha characters
+bigrams_separated$word2 <- gsub("[^a-zA-Z]","", bigrams_separated$word2) # only use alpha characters
+bigrams_separated$word1 <- gsub("\\s+","", bigrams_separated$word1) # get rid of whitespace
+bigrams_separated$word2 <- gsub("\\s+","", bigrams_separated$word2) # get rid of whitespace
+
+bigrams_filtered <- bigrams_separated %>%
+  # remove undesirable_words
+  filter(!word1 %in% undesirable_words) %>%
+  filter(!word2 %in% undesirable_words) %>%
+  # remove stop_words
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# view the data (number of rows/variables, number of columns/observations)
+dim (bigrams_filtered) 
+```
+
+# Count the most common bigrams.
+
+```{r message=FALSE, error=FALSE}
+# new bigram counts
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+```
+
+# Build a network of common bigrams
+
+```{r message=FALSE, error=FALSE}
+# filter for only relatively common combinations
+bigram_graph_common <- bigram_counts %>%
+  filter(n > 2) %>% #include only repeated words
+  graph_from_data_frame((directed = FALSE))
+
+plot(bigram_graph_common) # view simple graph
+
+#create a better network graph
+library(ggraph)
+set.seed(2016)
+
+ggraph(bigram_graph_common, layout = "fr") +
+     #add edge_alpha to make links transparent based on how common or rare the bigram is
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+```
+
+# Visualize the graph using the Fruchterman-Reingold to visualize the nodes and ties (“fr”). Applying some polishing operations to make a better looking graph. 
+
+```{r message=FALSE, error=FALSE}
+#plot the graph of bigrams
+
+set.seed(2017)
+
+ggraph(bigram_graph_common, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), show.legend = FALSE,edge_colour = "cyan4") +
+  geom_node_point(size = 1) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+```
